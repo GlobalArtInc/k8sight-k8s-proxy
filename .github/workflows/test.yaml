@@ -1,0 +1,72 @@
+name: Test
+
+on:
+  push:
+    branches-ignore:
+      - automated/*
+      - renovate/*
+    paths-ignore:
+      - .editorconfig
+      - .gitignore
+      - .markdownlint.yaml
+      - .trunk/**
+      - LICENSE
+      - README.md
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  kind_version: 0.30.0 # datasource=github-releases depName=kubernetes-sigs/kind
+  kubernetes_version: 1.34.0 # datasource=docker depName=kindest/node
+
+jobs:
+  test:
+    name: Test
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Git tags
+        run: git fetch --force --tags
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: 2.12.7 # datasource=github-releases depName=goreleaser/goreleaser
+          args: build --clean --snapshot --single-target --output k8sight-k8s-proxy
+
+      - name: Start KinD cluster (Linux)
+        if: runner.os == 'Linux'
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: k8sight
+          version: v${{ env.kind_version }}
+          node_image: kindest/node:v${{ env.kubernetes_version }}
+          wait: 5m
+
+      - name: Run binary in the background
+        run: |
+          ./k8sight-k8s-proxy > k8sight-k8s-proxy.log &
+          echo $! > k8sight-k8s-proxy.pid
+          sleep 5
+          cat k8sight-k8s-proxy.log
+
+      - name: Test the output
+        run: |-
+          url=http://$(grep ^starting k8sight-k8s-proxy.log | sed 's/.* //')/version
+          curl -fsS $url | jq -ce . | grep platform

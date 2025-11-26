@@ -1,0 +1,12 @@
+?.*
+*~
+*.backup
+*.bak
+*.exe
+*.log
+dist/
+tmp/
+/k8sight-k8s-proxy
+.DS_Store
+.idea
+.vscode
